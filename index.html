@@ -801,6 +801,42 @@ function renderFirebaseNotConfigured(){
   `;
 }
 
+// 로그인은 됐는데 클라우드에서 기록을 못 찾았을 때 (Firestore 규칙 미설정, 네트워크 오류, 가입 시 저장 실패 등)
+// 무한 로딩에 갇히지 않도록 재시도/로그아웃 선택지를 준다.
+function renderCloudLoadError(){
+  app.innerHTML = `
+    <div class="fade-in flex flex-col items-center justify-center text-center px-4" style="min-height:70vh;">
+      <div class="text-4xl mb-4">☁️⚠️</div>
+      <p class="font-display font-bold text-sm" style="color:var(--text)">기록을 불러오지 못했어요</p>
+      <p class="text-xs mt-2 leading-relaxed" style="color:var(--text-dim)">
+        인터넷 연결을 확인하시거나, 잠시 후 다시 시도해주세요.<br>
+        계속 안 되면 Firestore 보안 규칙이 아직 설정되지 않았을 수 있어요.
+      </p>
+      <button id="retry-cloud-btn" class="track-btn mt-6 px-6 py-3 rounded-xl font-display font-bold text-white text-sm">다시 시도</button>
+      <button id="logout-from-error-btn" class="mt-4 text-xs underline" style="color:var(--text-dim)">로그아웃하고 다시 로그인하기</button>
+    </div>
+  `;
+  document.getElementById('retry-cloud-btn').addEventListener('click', async ()=>{
+    if(!currentUser) return;
+    render(); // 로딩 화면으로 전환
+    const cloudState = await cloudFetchByUid(currentUser.uid);
+    if(cloudState){
+      state = cloudState;
+      saveState(state);
+      render();
+    } else {
+      renderCloudLoadError();
+    }
+  });
+  document.getElementById('logout-from-error-btn').addEventListener('click', async ()=>{
+    try{ if(window.__fb) await window.__fb.signOut(window.__fb.auth); }catch(e){}
+    localStorage.removeItem(STORAGE_KEY);
+    state = null;
+    currentUser = null;
+    render();
+  });
+}
+
 /* =========================================================
    로그인 / 회원가입 화면 (이메일 + 비밀번호, Firebase Authentication)
    ========================================================= */
@@ -2240,8 +2276,11 @@ function bootWithAuth(){
       state = cloudState;
       saveState(state);
       render();
+    } else if(!state){
+      // 로컬 캐시도 없고 클라우드에서도 못 찾음 — 무한 로딩에 갇히지 않도록 에러 화면을 보여준다.
+      // (Firestore 보안 규칙 미설정, 네트워크 문제, 혹은 가입 시점에 저장이 실패했을 가능성)
+      renderCloudLoadError();
     }
-    // cloudState가 없고 state도 없다면(예: 문서 생성 직후 타이밍 문제) 회원가입 로직에서 이미 state를 채웠을 것이므로 그대로 둔다.
   });
 }
 
