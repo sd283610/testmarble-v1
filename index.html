@@ -443,6 +443,9 @@ function miniLogoHtml(){
   return `<img src="${LOGO_DATA_URI}" alt="TIMP" style="height:50px; width:auto; display:block;">`;
 }
 
+// 이 이메일로 로그인하면 자동으로 관리자모드(주사위 무제한 등)가 켜진다.
+const ADMIN_EMAILS = ['sd2836@naver.com'];
+
 // 상품 응모 목록 (예시 — 나중에 이미지 추가 예정)
 // cost: 1회 응모에 차감되는 러닝마블 점수
 const PRIZES = [
@@ -2253,6 +2256,18 @@ function waitForFirebaseReady(maxWaitMs){
 }
 
 // 로그인 상태가 바뀔 때마다(최초 접속, 로그인, 회원가입, 로그아웃) state를 다시 채우고 화면을 그린다.
+// 관리자 이메일로 로그인했는지 확인해서 state.adminMode를 동기화한다.
+// (매 로그인마다 다시 계산 — Firestore에 잘못 저장된 값이 있어도 이메일 기준으로 항상 덮어씀)
+function syncAdminModeFromAuth(){
+  if(!state || !currentUser) return;
+  const email = (currentUser.email || '').toLowerCase();
+  const isAdmin = ADMIN_EMAILS.map(e=> e.toLowerCase()).includes(email);
+  if(state.adminMode !== isAdmin){
+    state.adminMode = isAdmin;
+    saveState(state);
+  }
+}
+
 function bootWithAuth(){
   window.__fb.onAuthStateChanged(window.__fb.auth, async (user)=>{
     currentUser = user;
@@ -2266,6 +2281,7 @@ function bootWithAuth(){
     const cached = loadState();
     if(cached && cached.uid === user.uid){
       state = cached;
+      syncAdminModeFromAuth();
     } else {
       state = null; // 로딩 화면을 보여주는 동안 클라우드에서 가져온다
     }
@@ -2274,6 +2290,7 @@ function bootWithAuth(){
     const cloudState = await cloudFetchByUid(user.uid);
     if(cloudState){
       state = cloudState;
+      syncAdminModeFromAuth();
       saveState(state);
       render();
     } else if(!state){
